@@ -1,0 +1,11 @@
+# Run lint-staged
+npm run pre-commit
+
+# Run type checking
+echo "Running type checking..."
+npm run typecheck
+
+# Run tests
+echo "Running tests..."
+npm test -- --passWithNoTests
+

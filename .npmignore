@@ -1,0 +1,32 @@
+# Source files
+src/
+tests/
+*.test.ts
+
+# Build configuration
+tsconfig.json
+jest.config.js
+.eslintrc.json
+.prettierrc.json
+CMakeLists.txt
+
+# CI/CD
+.github/
+.devcontainer/
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Misc
+coverage/
+*.log
+.DS_Store
+daxpy.f

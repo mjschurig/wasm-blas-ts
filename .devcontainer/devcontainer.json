@@ -1,0 +1,40 @@
+{
+  "name": "WASM BLAS TypeScript Dev Container",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "installOhMyZsh": true,
+      "upgradePackages": true
+    },
+    "ghcr.io/devcontainers/features/git:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers-extra/features/cmake:1": {},
+    "ghcr.io/ebaskoro/devcontainer-features/emscripten:1": {}
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-vscode.cmake-tools",
+        "ms-vscode.cpptools",
+        "firsttris.vscode-jest-runner",
+        "orta.vscode-jest"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "eslint.validate": ["typescript"],
+        "typescript.tsdk": "node_modules/typescript/lib"
+      }
+    }
+  },
+  "forwardPorts": [],
+  "remoteUser": "node"
+}
