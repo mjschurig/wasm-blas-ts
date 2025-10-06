@@ -24,22 +24,5 @@
     "node": true,
     "es2020": true
   },
-  "ignorePatterns": ["dist", "build", "node_modules", "*.js"],
-  "overrides": [
-    {
-      "files": ["tests/**/*.ts"],
-      "extends": [
-        "eslint:recommended",
-        "@typescript-eslint/recommended",
-        "plugin:prettier/recommended"
-      ],
-      "parserOptions": {
-        "project": null
-      },
-      "rules": {
-        "@typescript-eslint/no-floating-promises": "off",
-        "@typescript-eslint/no-misused-promises": "off"
-      }
-    }
-  ]
+  "ignorePatterns": ["dist", "build", "node_modules", "*.js", "tests/**/*"]
 }

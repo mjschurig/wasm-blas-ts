@@ -1,5 +1,10 @@
-# Run lint-staged
-npm run pre-commit
+# Run formatting
+echo "Running prettier..."
+npm run format
+
+# Run linting
+echo "Running ESLint..."
+npm run lint
 
 # Run type checking
 echo "Running type checking..."
