@@ -35,12 +35,12 @@ import { getModule } from './wasm-module';
 export function daxpby(
   n: number,
   alpha: number,
-  x: Float64Array | number[],
+  x: Float64Array,
   incx: number = 1,
   beta: number,
-  y: Float64Array | number[],
+  y: Float64Array,
   incy: number = 1
-): Float64Array {
+): void {
   const module = getModule();
 
   // Handle edge cases
@@ -48,7 +48,7 @@ export function daxpby(
     throw new Error('n must be positive');
   }
   if (n === 0) {
-    return y instanceof Float64Array ? y : new Float64Array(y);
+    return;
   }
 
   const xLen = 1 + (n - 1) * Math.abs(incx);
@@ -62,37 +62,24 @@ export function daxpby(
     throw new Error(`y array too small: expected at least ${yLen}, got ${y.length}`);
   }
 
-  // Convert to Float64Array if necessary
-  const xArray = x instanceof Float64Array ? x : new Float64Array(x);
-  const yArray = y instanceof Float64Array ? y : new Float64Array(y);
-
   // Allocate memory in WASM
-  const xPtr = module._malloc(xArray.length * 8); // 8 bytes per double
-  const yPtr = module._malloc(yArray.length * 8);
+  const xPtr = module._malloc(x.length * 8); // 8 bytes per double
+  const yPtr = module._malloc(y.length * 8);
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(xArray, xPtr / 8);
-    module.HEAPF64.set(yArray, yPtr / 8);
+    module.HEAPF64.set(x, xPtr / 8);
+    module.HEAPF64.set(y, yPtr / 8);
 
     // Call the WASM function
     module._daxpby(n, alpha, xPtr, incx, beta, yPtr, incy);
 
     // Copy result back
-    const result = new Float64Array(yArray.length);
-    result.set(module.HEAPF64.subarray(yPtr / 8, yPtr / 8 + yArray.length));
+    const result = new Float64Array(y.length);
+    result.set(module.HEAPF64.subarray(yPtr / 8, yPtr / 8 + y.length));
 
     // Copy back to original array regardless of type
-    if (y instanceof Float64Array) {
-      y.set(result);
-    } else {
-      // For regular arrays, copy element by element
-      for (let i = 0; i < result.length; i++) {
-        y[i] = result[i];
-      }
-    }
-
-    return result;
+    y.set(result);
   } finally {
     // Free WASM memory
     module._free(xPtr);

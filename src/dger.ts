@@ -11,13 +11,13 @@ import { getModule } from './wasm-module';
  * @param m - Number of rows of matrix A
  * @param n - Number of columns of matrix A
  * @param alpha - Scalar multiplier
- * @param x - Input vector x (Float64Array or number[]) - m elements
+ * @param x - Input vector x (Float64Array) - m elements
  * @param incx - Storage spacing between elements of x (default: 1)
- * @param y - Input vector y (Float64Array or number[]) - n elements
+ * @param y - Input vector y (Float64Array) - n elements
  * @param incy - Storage spacing between elements of y (default: 1)
- * @param a - Input/output matrix A in column-major order (Float64Array or number[])
+ * @param a - Input/output matrix A in column-major order (Float64Array)
  * @param lda - Leading dimension of A
- * @returns The modified A matrix
+ * @modifies a - The a matrix is modified in-place
  *
  * @example
  * ```typescript
@@ -38,13 +38,13 @@ export function dger(
   m: number,
   n: number,
   alpha: number,
-  x: Float64Array | number[],
+  x: Float64Array,
   incx: number = 1,
-  y: Float64Array | number[],
+  y: Float64Array,
   incy: number = 1,
-  a: Float64Array | number[],
+  a: Float64Array,
   lda: number
-): Float64Array {
+): void {
   const module = getModule();
 
   // Handle edge cases
@@ -68,39 +68,23 @@ export function dger(
     throw new Error(`a array too small: expected at least ${lda * n}, got ${a.length}`);
   }
 
-  // Convert to Float64Array if necessary
-  const xArray = x instanceof Float64Array ? x : new Float64Array(x);
-  const yArray = y instanceof Float64Array ? y : new Float64Array(y);
-  const aArray = a instanceof Float64Array ? a : new Float64Array(a);
-
   // Allocate memory in WASM
-  const xPtr = module._malloc(xArray.length * 8);
-  const yPtr = module._malloc(yArray.length * 8);
-  const aPtr = module._malloc(aArray.length * 8);
+  const xPtr = module._malloc(x.length * 8);
+  const yPtr = module._malloc(y.length * 8);
+  const aPtr = module._malloc(a.length * 8);
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(xArray, xPtr / 8);
-    module.HEAPF64.set(yArray, yPtr / 8);
-    module.HEAPF64.set(aArray, aPtr / 8);
+    module.HEAPF64.set(x, xPtr / 8);
+    module.HEAPF64.set(y, yPtr / 8);
+    module.HEAPF64.set(a, aPtr / 8);
 
     // Call the WASM function
     module._dger(m, n, alpha, xPtr, incx, yPtr, incy, aPtr, lda);
 
-    // Copy result back
-    const result = new Float64Array(aArray.length);
-    result.set(module.HEAPF64.subarray(aPtr / 8, aPtr / 8 + aArray.length));
-
-    // Copy back to original array regardless of type
-    if (a instanceof Float64Array) {
-      a.set(result);
-    } else {
-      for (let i = 0; i < result.length; i++) {
-        a[i] = result[i];
-      }
-    }
-
-    return result;
+    // Copy result back to a
+    const result = module.HEAPF64.subarray(aPtr / 8, aPtr / 8 + a.length);
+    a.set(result);
   } finally {
     // Free WASM memory
     module._free(xPtr);

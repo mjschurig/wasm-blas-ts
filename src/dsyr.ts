@@ -3,6 +3,7 @@
  * TypeScript wrapper for WebAssembly implementation
  */
 
+import { Triangular } from './types';
 import { getModule } from './wasm-module';
 
 /**
@@ -11,11 +12,11 @@ import { getModule } from './wasm-module';
  * @param uplo - 'U': use upper triangular part, 'L': use lower triangular part
  * @param n - Order of the matrix A
  * @param alpha - Scalar multiplier
- * @param x - Input vector x (Float64Array or number[])
+ * @param x - Input vector x (Float64Array)
  * @param incx - Storage spacing between elements of x (default: 1)
- * @param a - Input/output symmetric matrix A in column-major order (Float64Array or number[])
+ * @param a - Input/output symmetric matrix A in column-major order (Float64Array)
  * @param lda - Leading dimension of A
- * @returns The modified A matrix
+ * @modifies a - The a matrix is modified in-place
  *
  * @example
  * ```typescript
@@ -32,14 +33,14 @@ import { getModule } from './wasm-module';
  * ```
  */
 export function dsyr(
-  uplo: string,
+  uplo: Triangular,
   n: number,
   alpha: number,
-  x: Float64Array | number[],
+  x: Float64Array,
   incx: number = 1,
-  a: Float64Array | number[],
+  a: Float64Array,
   lda: number
-): Float64Array {
+): void {
   const module = getModule();
 
   // Handle edge cases
@@ -59,37 +60,22 @@ export function dsyr(
     throw new Error(`a array too small: expected at least ${lda * n}, got ${a.length}`);
   }
 
-  // Convert to Float64Array if necessary
-  const xArray = x instanceof Float64Array ? x : new Float64Array(x);
-  const aArray = a instanceof Float64Array ? a : new Float64Array(a);
-
   // Allocate memory in WASM
-  const xPtr = module._malloc(xArray.length * 8);
-  const aPtr = module._malloc(aArray.length * 8);
+  const xPtr = module._malloc(x.length * 8);
+  const aPtr = module._malloc(a.length * 8);
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(xArray, xPtr / 8);
-    module.HEAPF64.set(aArray, aPtr / 8);
+    module.HEAPF64.set(x, xPtr / 8);
+    module.HEAPF64.set(a, aPtr / 8);
 
     // Call the WASM function
-    const uploChar = uplo.charCodeAt(0);
+    const uploChar = uplo === Triangular.Upper ? 0 : 1;
     module._dsyr(uploChar, n, alpha, xPtr, incx, aPtr, lda);
 
-    // Copy result back
-    const result = new Float64Array(aArray.length);
-    result.set(module.HEAPF64.subarray(aPtr / 8, aPtr / 8 + aArray.length));
-
-    // Copy back to original array regardless of type
-    if (a instanceof Float64Array) {
-      a.set(result);
-    } else {
-      for (let i = 0; i < result.length; i++) {
-        a[i] = result[i];
-      }
-    }
-
-    return result;
+    // Copy result back to a
+    const result = module.HEAPF64.subarray(aPtr / 8, aPtr / 8 + a.length);
+    a.set(result);
   } finally {
     // Free WASM memory
     module._free(xPtr);

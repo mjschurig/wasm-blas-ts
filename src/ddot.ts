@@ -9,9 +9,9 @@ import { getModule } from './wasm-module';
  * Computes the dot product of two vectors: result = x^T * y
  *
  * @param n - Number of elements in vectors
- * @param x - Input vector x (Float64Array or number[])
+ * @param x - Input vector x (Float64Array)
  * @param incx - Storage spacing between elements of x (default: 1)
- * @param y - Input vector y (Float64Array or number[])
+ * @param y - Input vector y (Float64Array)
  * @param incy - Storage spacing between elements of y (default: 1)
  * @returns The dot product of x and y
  *
@@ -30,9 +30,9 @@ import { getModule } from './wasm-module';
  */
 export function ddot(
   n: number,
-  x: Float64Array | number[],
+  x: Float64Array,
   incx: number = 1,
-  y: Float64Array | number[],
+  y: Float64Array,
   incy: number = 1
 ): number {
   const module = getModule();
@@ -56,18 +56,14 @@ export function ddot(
     throw new Error(`y array too small: expected at least ${yLen}, got ${y.length}`);
   }
 
-  // Convert to Float64Array if necessary
-  const xArray = x instanceof Float64Array ? x : new Float64Array(x);
-  const yArray = y instanceof Float64Array ? y : new Float64Array(y);
-
   // Allocate memory in WASM
-  const xPtr = module._malloc(xArray.length * 8); // 8 bytes per double
-  const yPtr = module._malloc(yArray.length * 8);
+  const xPtr = module._malloc(x.length * 8); // 8 bytes per double
+  const yPtr = module._malloc(y.length * 8);
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(xArray, xPtr / 8);
-    module.HEAPF64.set(yArray, yPtr / 8);
+    module.HEAPF64.set(x, xPtr / 8);
+    module.HEAPF64.set(y, yPtr / 8);
 
     // Call the WASM function
     const result = module._ddot(n, xPtr, incx, yPtr, incy);

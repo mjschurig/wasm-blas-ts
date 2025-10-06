@@ -9,11 +9,11 @@ import { getModule } from './wasm-module';
  * Copies vector x to vector y: y = x
  *
  * @param n - Number of elements in vectors
- * @param x - Input vector x (Float64Array or number[])
+ * @param x - Input vector x (Float64Array)
  * @param incx - Storage spacing between elements of x (default: 1)
- * @param y - Output vector y (Float64Array or number[])
+ * @param y - Output vector y (Float64Array)
  * @param incy - Storage spacing between elements of y (default: 1)
- * @returns The modified y vector
+ * @modifies y - The y vector is modified in-place
  *
  * @example
  * ```typescript
@@ -30,11 +30,11 @@ import { getModule } from './wasm-module';
  */
 export function dcopy(
   n: number,
-  x: Float64Array | number[],
+  x: Float64Array,
   incx: number = 1,
-  y: Float64Array | number[],
+  y: Float64Array,
   incy: number = 1
-): Float64Array {
+): void {
   const module = getModule();
 
   // Handle edge cases
@@ -42,7 +42,7 @@ export function dcopy(
     throw new Error('n must be positive');
   }
   if (n === 0) {
-    return y instanceof Float64Array ? y : new Float64Array(y);
+    return;
   }
 
   const xLen = 1 + (n - 1) * Math.abs(incx);
@@ -56,37 +56,21 @@ export function dcopy(
     throw new Error(`y array too small: expected at least ${yLen}, got ${y.length}`);
   }
 
-  // Convert to Float64Array if necessary
-  const xArray = x instanceof Float64Array ? x : new Float64Array(x);
-  const yArray = y instanceof Float64Array ? y : new Float64Array(y);
-
   // Allocate memory in WASM
-  const xPtr = module._malloc(xArray.length * 8); // 8 bytes per double
-  const yPtr = module._malloc(yArray.length * 8);
+  const xPtr = module._malloc(x.length * 8); // 8 bytes per double
+  const yPtr = module._malloc(y.length * 8);
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(xArray, xPtr / 8);
-    module.HEAPF64.set(yArray, yPtr / 8);
+    module.HEAPF64.set(x, xPtr / 8);
+    module.HEAPF64.set(y, yPtr / 8);
 
     // Call the WASM function
     module._dcopy(n, xPtr, incx, yPtr, incy);
 
-    // Copy result back
-    const result = new Float64Array(yArray.length);
-    result.set(module.HEAPF64.subarray(yPtr / 8, yPtr / 8 + yArray.length));
-
-    // Copy back to original array regardless of type
-    if (y instanceof Float64Array) {
-      y.set(result);
-    } else {
-      // For regular arrays, copy element by element
-      for (let i = 0; i < result.length; i++) {
-        y[i] = result[i];
-      }
-    }
-
-    return result;
+    // Copy result back to y
+    const result = module.HEAPF64.subarray(yPtr / 8, yPtr / 8 + y.length);
+    y.set(result);
   } finally {
     // Free WASM memory
     module._free(xPtr);

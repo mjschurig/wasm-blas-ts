@@ -25,14 +25,14 @@ import { getModule } from './wasm-module';
  * // result is 10 (|1| + |-2| + |3| + |-4|)
  * ```
  */
-export function dasum(n: number, x: Float64Array | number[], incx: number = 1): number {
+export function dasum(n: number, x: Float64Array, incx: number = 1): number {
   const module = getModule();
 
   // Handle edge cases
   if (n < 0) {
     throw new Error('n must be positive');
   }
-  if (n === 0) {
+  if (n === 0 || incx <= 0) {
     return 0.0;
   }
 
@@ -42,15 +42,12 @@ export function dasum(n: number, x: Float64Array | number[], incx: number = 1): 
     throw new Error(`x array too small: expected at least ${xLen}, got ${x.length}`);
   }
 
-  // Convert to Float64Array if necessary
-  const xArray = x instanceof Float64Array ? x : new Float64Array(x);
-
   // Allocate memory in WASM
-  const xPtr = module._malloc(xArray.length * 8); // 8 bytes per double
+  const xPtr = module._malloc(x.length * 8); // 8 bytes per double
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(xArray, xPtr / 8);
+    module.HEAPF64.set(x, xPtr / 8);
 
     // Call the WASM function
     const result = module._dasum(n, xPtr, incx);

@@ -3,6 +3,7 @@
  * TypeScript wrapper for WebAssembly implementation
  */
 
+import { Diagonal, Side, Transpose, Triangular } from './types';
 import { getModule } from './wasm-module';
 
 /**
@@ -17,11 +18,11 @@ import { getModule } from './wasm-module';
  * @param m - Number of rows of matrix B
  * @param n - Number of columns of matrix B
  * @param alpha - Scalar multiplier
- * @param a - Triangular matrix A in column-major order (Float64Array or number[])
+ * @param a - Triangular matrix A in column-major order (Float64Array)
  * @param lda - Leading dimension of A
- * @param b - Input matrix B, output matrix X in column-major order (Float64Array or number[])
+ * @param b - Input matrix B, output matrix X in column-major order (Float64Array)
  * @param ldb - Leading dimension of B
- * @returns The solution matrix X (overwrites B)
+ * @modifies b - The b matrix is modified in-place with the solution
  *
  * @example
  * ```typescript
@@ -38,18 +39,18 @@ import { getModule } from './wasm-module';
  * ```
  */
 export function dtrsm(
-  side: string,
-  uplo: string,
-  transa: string,
-  diag: string,
+  side: Side,
+  uplo: Triangular,
+  transa: Transpose,
+  diag: Diagonal,
   m: number,
   n: number,
   alpha: number,
-  a: Float64Array | number[],
+  a: Float64Array,
   lda: number,
-  b: Float64Array | number[],
+  b: Float64Array,
   ldb: number
-): Float64Array {
+): void {
   const module = getModule();
 
   // Handle edge cases
@@ -57,7 +58,7 @@ export function dtrsm(
     throw new Error('m and n must be non-negative');
   }
 
-  const isLeft = side.toUpperCase() === 'L';
+  const isLeft = side === Side.Left;
   const ka = isLeft ? m : n; // Dimension of triangular matrix A
 
   if (lda < Math.max(1, ka)) {
@@ -74,40 +75,26 @@ export function dtrsm(
     throw new Error(`b array too small: expected at least ${ldb * n}, got ${b.length}`);
   }
 
-  // Convert to Float64Array if necessary
-  const aArray = a instanceof Float64Array ? a : new Float64Array(a);
-  const bArray = b instanceof Float64Array ? b : new Float64Array(b);
-
   // Allocate memory in WASM
-  const aPtr = module._malloc(aArray.length * 8);
-  const bPtr = module._malloc(bArray.length * 8);
+  const aPtr = module._malloc(a.length * 8);
+  const bPtr = module._malloc(b.length * 8);
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(aArray, aPtr / 8);
-    module.HEAPF64.set(bArray, bPtr / 8);
+    module.HEAPF64.set(a, aPtr / 8);
+    module.HEAPF64.set(b, bPtr / 8);
 
     // Call the WASM function
-    const sideChar = side.charCodeAt(0);
-    const uploChar = uplo.charCodeAt(0);
-    const transaChar = transa.charCodeAt(0);
-    const diagChar = diag.charCodeAt(0);
+    const sideChar = side === Side.Left ? 0 : 1;
+    const uploChar = uplo === Triangular.Upper ? 0 : 1;
+    const transaChar =
+      transa === Transpose.NoTranspose ? 0 : transa === Transpose.Transpose ? 1 : 2;
+    const diagChar = diag === Diagonal.NonUnit ? 0 : 1;
     module._dtrsm(sideChar, uploChar, transaChar, diagChar, m, n, alpha, aPtr, lda, bPtr, ldb);
 
-    // Copy result back
-    const result = new Float64Array(bArray.length);
-    result.set(module.HEAPF64.subarray(bPtr / 8, bPtr / 8 + bArray.length));
-
-    // Copy back to original array regardless of type
-    if (b instanceof Float64Array) {
-      b.set(result);
-    } else {
-      for (let i = 0; i < result.length; i++) {
-        b[i] = result[i];
-      }
-    }
-
-    return result;
+    // Copy result back to b
+    const result = module.HEAPF64.subarray(bPtr / 8, bPtr / 8 + b.length);
+    b.set(result);
   } finally {
     // Free WASM memory
     module._free(aPtr);

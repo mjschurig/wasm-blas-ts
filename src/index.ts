@@ -49,3 +49,4 @@ export { dgemmtr } from './dgemmtr';
 
 // Re-export types
 export type { BlasModule } from './wasm-module';
+export { Side, Transpose, Triangular, Diagonal } from './types';

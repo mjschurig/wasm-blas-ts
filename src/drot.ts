@@ -11,13 +11,13 @@ import { getModule } from './wasm-module';
  * [y]   [-s c] [y]
  *
  * @param n - Number of elements in vectors
- * @param x - Input/output vector x (Float64Array or number[])
+ * @param x - Input/output vector x (Float64Array)
  * @param incx - Storage spacing between elements of x (default: 1)
- * @param y - Input/output vector y (Float64Array or number[])
+ * @param y - Input/output vector y (Float64Array)
  * @param incy - Storage spacing between elements of y (default: 1)
  * @param c - Cosine of the rotation angle
  * @param s - Sine of the rotation angle
- * @returns Object containing the rotated vectors
+ * @modifies x, y - Both vectors are modified in-place
  *
  * @example
  * ```typescript
@@ -36,13 +36,13 @@ import { getModule } from './wasm-module';
  */
 export function drot(
   n: number,
-  x: Float64Array | number[],
+  x: Float64Array,
   incx: number = 1,
-  y: Float64Array | number[],
+  y: Float64Array,
   incy: number = 1,
   c: number,
   s: number
-): { x: Float64Array; y: Float64Array } {
+): void {
   const module = getModule();
 
   // Handle edge cases
@@ -50,10 +50,7 @@ export function drot(
     throw new Error('n must be positive');
   }
   if (n === 0) {
-    return {
-      x: x instanceof Float64Array ? x : new Float64Array(x),
-      y: y instanceof Float64Array ? y : new Float64Array(y),
-    };
+    return;
   }
 
   const xLen = 1 + (n - 1) * Math.abs(incx);
@@ -67,46 +64,23 @@ export function drot(
     throw new Error(`y array too small: expected at least ${yLen}, got ${y.length}`);
   }
 
-  // Convert to Float64Array if necessary
-  const xArray = x instanceof Float64Array ? x : new Float64Array(x);
-  const yArray = y instanceof Float64Array ? y : new Float64Array(y);
-
   // Allocate memory in WASM
-  const xPtr = module._malloc(xArray.length * 8); // 8 bytes per double
-  const yPtr = module._malloc(yArray.length * 8);
+  const xPtr = module._malloc(x.length * 8); // 8 bytes per double
+  const yPtr = module._malloc(y.length * 8);
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(xArray, xPtr / 8);
-    module.HEAPF64.set(yArray, yPtr / 8);
+    module.HEAPF64.set(x, xPtr / 8);
+    module.HEAPF64.set(y, yPtr / 8);
 
     // Call the WASM function
     module._drot(n, xPtr, incx, yPtr, incy, c, s);
 
-    // Copy results back
-    const resultX = new Float64Array(xArray.length);
-    const resultY = new Float64Array(yArray.length);
-    resultX.set(module.HEAPF64.subarray(xPtr / 8, xPtr / 8 + xArray.length));
-    resultY.set(module.HEAPF64.subarray(yPtr / 8, yPtr / 8 + yArray.length));
-
-    // Copy back to original arrays regardless of type
-    if (x instanceof Float64Array) {
-      x.set(resultX);
-    } else {
-      for (let i = 0; i < resultX.length; i++) {
-        x[i] = resultX[i];
-      }
-    }
-
-    if (y instanceof Float64Array) {
-      y.set(resultY);
-    } else {
-      for (let i = 0; i < resultY.length; i++) {
-        y[i] = resultY[i];
-      }
-    }
-
-    return { x: resultX, y: resultY };
+    // Copy results back to original arrays
+    const resultX = module.HEAPF64.subarray(xPtr / 8, xPtr / 8 + x.length);
+    const resultY = module.HEAPF64.subarray(yPtr / 8, yPtr / 8 + y.length);
+    x.set(resultX);
+    y.set(resultY);
   } finally {
     // Free WASM memory
     module._free(xPtr);

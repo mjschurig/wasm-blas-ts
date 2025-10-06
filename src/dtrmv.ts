@@ -3,6 +3,7 @@
  * TypeScript wrapper for WebAssembly implementation
  */
 
+import { Diagonal, Transpose, Triangular } from './types';
 import { getModule } from './wasm-module';
 
 /**
@@ -12,11 +13,11 @@ import { getModule } from './wasm-module';
  * @param trans - 'N': x := A*x, 'T'/'C': x := A^T*x
  * @param diag - 'U': unit triangular, 'N': non-unit triangular
  * @param n - Order of the matrix A
- * @param a - Triangular matrix A in column-major order (Float64Array or number[])
+ * @param a - Triangular matrix A in column-major order (Float64Array)
  * @param lda - Leading dimension of A
- * @param x - Input/output vector x (Float64Array or number[])
+ * @param x - Input/output vector x (Float64Array)
  * @param incx - Storage spacing between elements of x (default: 1)
- * @returns The modified x vector
+ * @modifies x - The x vector is modified in-place
  *
  * @example
  * ```typescript
@@ -33,15 +34,15 @@ import { getModule } from './wasm-module';
  * ```
  */
 export function dtrmv(
-  uplo: string,
-  trans: string,
-  diag: string,
+  uplo: Triangular,
+  trans: Transpose,
+  diag: Diagonal,
   n: number,
-  a: Float64Array | number[],
+  a: Float64Array,
   lda: number,
-  x: Float64Array | number[],
+  x: Float64Array,
   incx: number = 1
-): Float64Array {
+): void {
   const module = getModule();
 
   // Handle edge cases
@@ -61,39 +62,24 @@ export function dtrmv(
     throw new Error(`a array too small: expected at least ${lda * n}, got ${a.length}`);
   }
 
-  // Convert to Float64Array if necessary
-  const aArray = a instanceof Float64Array ? a : new Float64Array(a);
-  const xArray = x instanceof Float64Array ? x : new Float64Array(x);
-
   // Allocate memory in WASM
-  const aPtr = module._malloc(aArray.length * 8);
-  const xPtr = module._malloc(xArray.length * 8);
+  const aPtr = module._malloc(a.length * 8);
+  const xPtr = module._malloc(x.length * 8);
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(aArray, aPtr / 8);
-    module.HEAPF64.set(xArray, xPtr / 8);
+    module.HEAPF64.set(a, aPtr / 8);
+    module.HEAPF64.set(x, xPtr / 8);
 
     // Call the WASM function
-    const uploChar = uplo.charCodeAt(0);
-    const transChar = trans.charCodeAt(0);
-    const diagChar = diag.charCodeAt(0);
+    const uploChar = uplo === Triangular.Upper ? 0 : 1;
+    const transChar = trans === Transpose.NoTranspose ? 0 : trans === Transpose.Transpose ? 1 : 2;
+    const diagChar = diag === Diagonal.NonUnit ? 0 : 1;
     module._dtrmv(uploChar, transChar, diagChar, n, aPtr, lda, xPtr, incx);
 
-    // Copy result back
-    const result = new Float64Array(xArray.length);
-    result.set(module.HEAPF64.subarray(xPtr / 8, xPtr / 8 + xArray.length));
-
-    // Copy back to original array regardless of type
-    if (x instanceof Float64Array) {
-      x.set(result);
-    } else {
-      for (let i = 0; i < result.length; i++) {
-        x[i] = result[i];
-      }
-    }
-
-    return result;
+    // Copy result back to x
+    const result = module.HEAPF64.subarray(xPtr / 8, xPtr / 8 + x.length);
+    x.set(result);
   } finally {
     // Free WASM memory
     module._free(aPtr);

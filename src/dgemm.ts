@@ -3,6 +3,7 @@
  * TypeScript wrapper for WebAssembly implementation
  */
 
+import { Transpose } from './types';
 import { getModule } from './wasm-module';
 
 /**
@@ -15,14 +16,14 @@ import { getModule } from './wasm-module';
  * @param n - Number of columns of op(B) and C
  * @param k - Number of columns of op(A) and rows of op(B)
  * @param alpha - Scalar multiplier for op(A)*op(B)
- * @param a - Matrix A in column-major order (Float64Array or number[])
+ * @param a - Matrix A in column-major order (Float64Array)
  * @param lda - Leading dimension of A
- * @param b - Matrix B in column-major order (Float64Array or number[])
+ * @param b - Matrix B in column-major order (Float64Array)
  * @param ldb - Leading dimension of B
  * @param beta - Scalar multiplier for C
- * @param c - Input/output matrix C in column-major order (Float64Array or number[])
+ * @param c - Input/output matrix C in column-major order (Float64Array)
  * @param ldc - Leading dimension of C
- * @returns The modified C matrix
+ * @modifies c - The c matrix is modified in-place
  *
  * @example
  * ```typescript
@@ -40,20 +41,20 @@ import { getModule } from './wasm-module';
  * ```
  */
 export function dgemm(
-  transa: string,
-  transb: string,
+  transa: Transpose,
+  transb: Transpose,
   m: number,
   n: number,
   k: number,
   alpha: number,
-  a: Float64Array | number[],
+  a: Float64Array,
   lda: number,
-  b: Float64Array | number[],
+  b: Float64Array,
   ldb: number,
   beta: number,
-  c: Float64Array | number[],
+  c: Float64Array,
   ldc: number
-): Float64Array {
+): void {
   const module = getModule();
 
   // Handle edge cases
@@ -61,8 +62,8 @@ export function dgemm(
     throw new Error('m, n, and k must be non-negative');
   }
 
-  const isTransA = transa.toUpperCase() === 'T' || transa.toUpperCase() === 'C';
-  const isTransB = transb.toUpperCase() === 'T' || transb.toUpperCase() === 'C';
+  const isTransA = transa === Transpose.Transpose || transa === Transpose.ConjugateTranspose;
+  const isTransB = transb === Transpose.Transpose || transb === Transpose.ConjugateTranspose;
 
   const aRows = isTransA ? k : m;
   const aCols = isTransA ? m : k;
@@ -89,41 +90,25 @@ export function dgemm(
     throw new Error(`c array too small: expected at least ${ldc * n}, got ${c.length}`);
   }
 
-  // Convert to Float64Array if necessary
-  const aArray = a instanceof Float64Array ? a : new Float64Array(a);
-  const bArray = b instanceof Float64Array ? b : new Float64Array(b);
-  const cArray = c instanceof Float64Array ? c : new Float64Array(c);
-
   // Allocate memory in WASM
-  const aPtr = module._malloc(aArray.length * 8);
-  const bPtr = module._malloc(bArray.length * 8);
-  const cPtr = module._malloc(cArray.length * 8);
+  const aPtr = module._malloc(a.length * 8);
+  const bPtr = module._malloc(b.length * 8);
+  const cPtr = module._malloc(c.length * 8);
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(aArray, aPtr / 8);
-    module.HEAPF64.set(bArray, bPtr / 8);
-    module.HEAPF64.set(cArray, cPtr / 8);
+    module.HEAPF64.set(a, aPtr / 8);
+    module.HEAPF64.set(b, bPtr / 8);
+    module.HEAPF64.set(c, cPtr / 8);
 
     // Call the WASM function
     const transaChar = transa.charCodeAt(0);
     const transbChar = transb.charCodeAt(0);
     module._dgemm(transaChar, transbChar, m, n, k, alpha, aPtr, lda, bPtr, ldb, beta, cPtr, ldc);
 
-    // Copy result back
-    const result = new Float64Array(cArray.length);
-    result.set(module.HEAPF64.subarray(cPtr / 8, cPtr / 8 + cArray.length));
-
-    // Copy back to original array regardless of type
-    if (c instanceof Float64Array) {
-      c.set(result);
-    } else {
-      for (let i = 0; i < result.length; i++) {
-        c[i] = result[i];
-      }
-    }
-
-    return result;
+    // Copy result back to c
+    const result = module.HEAPF64.subarray(cPtr / 8, cPtr / 8 + c.length);
+    c.set(result);
   } finally {
     // Free WASM memory
     module._free(aPtr);

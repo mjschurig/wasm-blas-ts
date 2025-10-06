@@ -3,6 +3,7 @@
  * TypeScript wrapper for WebAssembly implementation
  */
 
+import { Transpose, Triangular } from './types';
 import { getModule } from './wasm-module';
 
 /**
@@ -14,12 +15,12 @@ import { getModule } from './wasm-module';
  * @param n - Order of matrix C
  * @param k - Number of columns of A (if trans='N') or rows of A (if trans='T')
  * @param alpha - Scalar multiplier for A*A^T or A^T*A
- * @param a - Matrix A in column-major order (Float64Array or number[])
+ * @param a - Matrix A in column-major order (Float64Array)
  * @param lda - Leading dimension of A
  * @param beta - Scalar multiplier for C
- * @param c - Input/output symmetric matrix C in column-major order (Float64Array or number[])
+ * @param c - Input/output symmetric matrix C in column-major order (Float64Array)
  * @param ldc - Leading dimension of C
- * @returns The modified C matrix
+ * @modifies c - The c matrix is modified in-place
  *
  * @example
  * ```typescript
@@ -36,17 +37,17 @@ import { getModule } from './wasm-module';
  * ```
  */
 export function dsyrk(
-  uplo: string,
-  trans: string,
+  uplo: Triangular,
+  trans: Transpose,
   n: number,
   k: number,
   alpha: number,
-  a: Float64Array | number[],
+  a: Float64Array,
   lda: number,
   beta: number,
-  c: Float64Array | number[],
+  c: Float64Array,
   ldc: number
-): Float64Array {
+): void {
   const module = getModule();
 
   // Handle edge cases
@@ -54,7 +55,7 @@ export function dsyrk(
     throw new Error('n and k must be non-negative');
   }
 
-  const isNotrans = trans.toUpperCase() === 'N';
+  const isNotrans = trans === Transpose.NoTranspose;
   const aRows = isNotrans ? n : k;
   const aCols = isNotrans ? k : n;
 
@@ -72,38 +73,23 @@ export function dsyrk(
     throw new Error(`c array too small: expected at least ${ldc * n}, got ${c.length}`);
   }
 
-  // Convert to Float64Array if necessary
-  const aArray = a instanceof Float64Array ? a : new Float64Array(a);
-  const cArray = c instanceof Float64Array ? c : new Float64Array(c);
-
   // Allocate memory in WASM
-  const aPtr = module._malloc(aArray.length * 8);
-  const cPtr = module._malloc(cArray.length * 8);
+  const aPtr = module._malloc(a.length * 8);
+  const cPtr = module._malloc(c.length * 8);
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(aArray, aPtr / 8);
-    module.HEAPF64.set(cArray, cPtr / 8);
+    module.HEAPF64.set(a, aPtr / 8);
+    module.HEAPF64.set(c, cPtr / 8);
 
     // Call the WASM function
-    const uploChar = uplo.charCodeAt(0);
-    const transChar = trans.charCodeAt(0);
+    const uploChar = uplo === Triangular.Upper ? 0 : 1;
+    const transChar = trans === Transpose.NoTranspose ? 0 : 1;
     module._dsyrk(uploChar, transChar, n, k, alpha, aPtr, lda, beta, cPtr, ldc);
 
-    // Copy result back
-    const result = new Float64Array(cArray.length);
-    result.set(module.HEAPF64.subarray(cPtr / 8, cPtr / 8 + cArray.length));
-
-    // Copy back to original array regardless of type
-    if (c instanceof Float64Array) {
-      c.set(result);
-    } else {
-      for (let i = 0; i < result.length; i++) {
-        c[i] = result[i];
-      }
-    }
-
-    return result;
+    // Copy result back to c
+    const result = module.HEAPF64.subarray(cPtr / 8, cPtr / 8 + c.length);
+    c.set(result);
   } finally {
     // Free WASM memory
     module._free(aPtr);

@@ -1,14 +1,33 @@
+/**
+ * DTPSV - Double precision triangular packed solve
+ * TypeScript wrapper for WebAssembly implementation
+ */
+
+import { Triangular, Transpose, Diagonal } from './types';
 import { getModule } from './wasm-module';
 
+/**
+ * Solves triangular packed system: A*x = b where A is triangular and packed
+ *
+ * @param uplo - 'U': upper triangular, 'L': lower triangular
+ * @param trans - 'N': A*x = b, 'T'/'C': A^T*x = b
+ * @param diag - 'U': unit triangular, 'N': non-unit triangular
+ * @param n - Order of the matrix A
+ * @param ap - Packed triangular matrix A (Float64Array)
+ * @param x - Input/output vector x (Float64Array)
+ * @param incx - Storage spacing between elements of x (default: 1)
+ * @modifies x - The x vector is modified in-place with the solution
+ */
+
 export function dtpsv(
-  uplo: 'U' | 'L',
-  trans: 'N' | 'T' | 'C',
-  diag: 'U' | 'N',
+  uplo: Triangular,
+  trans: Transpose,
+  diag: Diagonal,
   n: number,
-  ap: Float64Array | number[],
-  x: Float64Array | number[],
+  ap: Float64Array,
+  x: Float64Array,
   incx: number = 1
-): Float64Array {
+): void {
   const module = getModule();
 
   // Validate inputs
@@ -19,54 +38,41 @@ export function dtpsv(
     throw new Error('Increment cannot be zero');
   }
 
-  // Convert inputs to Float64Array
-  const apArray = new Float64Array(ap);
-  const xArray = new Float64Array(x);
+  // Input arrays are already Float64Array
 
   // Validate packed matrix size
   const expectedApSize = (n * (n + 1)) / 2;
-  if (apArray.length < expectedApSize) {
-    throw new Error(
-      `ap array is too small: expected at least ${expectedApSize}, got ${apArray.length}`
-    );
+  if (ap.length < expectedApSize) {
+    throw new Error(`ap array is too small: expected at least ${expectedApSize}, got ${ap.length}`);
   }
 
   // Validate vector size
   const minXSize = incx > 0 ? 1 + (n - 1) * incx : 1 + (n - 1) * Math.abs(incx);
 
-  if (xArray.length < minXSize) {
-    throw new Error(`x array is too small: expected at least ${minXSize}, got ${xArray.length}`);
+  if (x.length < minXSize) {
+    throw new Error(`x array is too small: expected at least ${minXSize}, got ${x.length}`);
   }
 
   // Allocate memory
-  const apPtr = module._malloc(apArray.length * 8);
-  const xPtr = module._malloc(xArray.length * 8);
+  const apPtr = module._malloc(ap.length * 8);
+  const xPtr = module._malloc(x.length * 8);
 
   try {
     // Copy data to WASM memory
-    module.HEAPF64.set(apArray, apPtr / 8);
-    module.HEAPF64.set(xArray, xPtr / 8);
+    module.HEAPF64.set(ap, apPtr / 8);
+    module.HEAPF64.set(x, xPtr / 8);
 
     // Convert parameters to integers
-    const uploInt = uplo === 'U' ? 0 : 1;
-    const transInt = trans === 'N' ? 0 : trans === 'T' ? 1 : 2;
-    const diagInt = diag === 'N' ? 0 : 1;
+    const uploInt = uplo === Triangular.Upper ? 0 : 1;
+    const transInt = trans === Transpose.NoTranspose ? 0 : trans === Transpose.Transpose ? 1 : 2;
+    const diagInt = diag === Diagonal.NonUnit ? 0 : 1;
 
     // Call BLAS function
     module._dtpsv(uploInt, transInt, diagInt, n, apPtr, xPtr, incx);
 
-    // Copy result back
-    const result = new Float64Array(xArray.length);
-    result.set(module.HEAPF64.subarray(xPtr / 8, xPtr / 8 + xArray.length));
-
-    // Copy back to original array if it was passed in
-    if (x instanceof Float64Array || Array.isArray(x)) {
-      for (let i = 0; i < Math.min(x.length, result.length); i++) {
-        x[i] = result[i];
-      }
-    }
-
-    return result;
+    // Copy result back to x
+    const result = module.HEAPF64.subarray(xPtr / 8, xPtr / 8 + x.length);
+    x.set(result);
   } finally {
     // Free allocated memory
     module._free(apPtr);
