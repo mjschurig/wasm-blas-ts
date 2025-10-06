@@ -40,9 +40,18 @@ export function daxpy(
 ): Float64Array {
   const module = getModule();
 
-  // Validate inputs
-  if (n <= 0) {
+  // Handle edge cases
+  if (n < 0) {
     throw new Error('n must be positive');
+  }
+  if (n === 0) {
+    // Early return for n = 0 - no operation needed
+    return y instanceof Float64Array ? y : new Float64Array(y);
+  }
+
+  if (alpha === 0) {
+    // Early return for alpha = 0 - no operation needed
+    return y instanceof Float64Array ? y : new Float64Array(y);
   }
 
   const xLen = 1 + (n - 1) * Math.abs(incx);
@@ -76,9 +85,14 @@ export function daxpy(
     const result = new Float64Array(yArray.length);
     result.set(module.HEAPF64.subarray(yPtr / 8, yPtr / 8 + yArray.length));
 
-    // Copy back to original array if it was Float64Array
+    // Copy back to original array regardless of type
     if (y instanceof Float64Array) {
       y.set(result);
+    } else {
+      // For regular arrays, copy element by element
+      for (let i = 0; i < result.length; i++) {
+        y[i] = result[i];
+      }
     }
 
     return result;

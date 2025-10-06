@@ -112,7 +112,9 @@ describe('DAXPY', () => {
     const x = new Float64Array([1, 2, 3]);
     const y = new Float64Array([4, 5, 6]);
 
-    expect(() => daxpy(0, 1.0, x, 1, y, 1)).toThrow('n must be positive');
+    // n = 0 should be handled gracefully (no throw)
+    expect(() => daxpy(0, 1.0, x, 1, y, 1)).not.toThrow();
+    // Only negative n should throw
     expect(() => daxpy(-1, 1.0, x, 1, y, 1)).toThrow('n must be positive');
   });
 
@@ -134,5 +136,85 @@ describe('DAXPY', () => {
     expect(result[0]).toBeCloseTo(6);
     expect(result[1]).toBeCloseTo(9);
     expect(result[2]).toBeCloseTo(12);
+  });
+});
+
+describe('DAXPY - Vector Scale and Add', () => {
+  beforeAll(async () => {
+    await initWasm();
+  });
+
+  it('should compute y = alpha*x + y correctly (basic case)', () => {
+    const n = 4;
+    const alpha = 2.0;
+    const x = [1, 2, 3, 4];
+    const y = [10, 20, 30, 40];
+    const expected = [12, 24, 36, 48]; // y + alpha*x = [10,20,30,40] + 2*[1,2,3,4]
+
+    daxpy(n, alpha, x, 1, y, 1);
+
+    expect(y).toEqual(expected);
+  });
+
+  it('should handle alpha = 0 (early return)', () => {
+    const n = 3;
+    const alpha = 0.0;
+    const x = [1, 2, 3];
+    const y = [10, 20, 30];
+    const expected = [10, 20, 30]; // y should remain unchanged
+
+    daxpy(n, alpha, x, 1, y, 1);
+
+    expect(y).toEqual(expected);
+  });
+
+  it('should handle n <= 0 (early return)', () => {
+    const n = 0;
+    const alpha = 2.0;
+    const x = [1, 2, 3];
+    const y = [10, 20, 30];
+    const expected = [10, 20, 30]; // y should remain unchanged
+
+    daxpy(n, alpha, x, 1, y, 1);
+
+    expect(y).toEqual(expected);
+  });
+
+  it('should handle different increments', () => {
+    const n = 2;
+    const alpha = 3.0;
+    const x = [1, 0, 2, 0]; // effective x = [1, 2] with incx = 2
+    const y = [10, 0, 20, 0]; // effective y = [10, 20] with incy = 2
+    const expected = [13, 0, 26, 0]; // y[0] = 10 + 3*1 = 13, y[2] = 20 + 3*2 = 26
+
+    daxpy(n, alpha, x, 2, y, 2);
+
+    expect(y).toEqual(expected);
+  });
+
+  it('should handle negative increments', () => {
+    const n = 2;
+    const alpha = 2.0;
+    const x = [1, 2]; // Will be accessed in reverse due to negative increment
+    const y = [10, 20];
+
+    daxpy(n, alpha, x, -1, y, -1);
+
+    // With negative increments, access pattern is reversed
+    // First iteration: y[1] = y[1] + alpha * x[1] = 20 + 2*2 = 24
+    // Second iteration: y[0] = y[0] + alpha * x[0] = 10 + 2*1 = 12
+    expect(y).toEqual([12, 24]);
+  });
+
+  it('should handle unrolled loop optimization (n >= 4)', () => {
+    const n = 8;
+    const alpha = 0.5;
+    const x = [1, 2, 3, 4, 5, 6, 7, 8];
+    const y = [10, 20, 30, 40, 50, 60, 70, 80];
+    const expected = [10.5, 21, 31.5, 42, 52.5, 63, 73.5, 84];
+
+    daxpy(n, alpha, x, 1, y, 1);
+
+    expect(y).toEqual(expected);
   });
 });
